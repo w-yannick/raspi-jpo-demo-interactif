@@ -1,0 +1,86 @@
+#!/usr/bin/python3
+
+import time
+import os
+import ssl
+from http import server
+from http.server import BaseHTTPRequestHandler
+
+from utils import HOST_NAME, PORT_NUMBER, PI_PATH, EXTENSION
+
+FILE_TYPES = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    "notfound": "text/plain"
+}
+
+HTTP_OK = 200
+HTTP_NOT_FOUND = 404
+
+
+class Server(BaseHTTPRequestHandler):
+    def __init__(self, request, client_address, server):
+        """Initialize class attributes and super class"""
+        super().__init__(request, client_address, server)
+        self.contentType = FILE_TYPES['notfound']
+        self.status = HTTP_NOT_FOUND
+        self.contents = "Not Found"
+
+    def find(self, file_name):
+        """Find requested image in public folder. Image is read, then deleted.
+
+        Positional arguments:
+        file_name -- path of the request which is the file name
+        """
+        complete_path = os.path.join(PI_PATH, file_name + EXTENSION)
+        print(f"Searching for {complete_path}")
+        try:
+            f = open(complete_path, 'rb')
+            print(f"Found {complete_path}")
+            self.contents = f.read()
+            os.remove(complete_path)
+            print(f"Removed {complete_path}")
+            self.contentType = FILE_TYPES[EXTENSION]
+            self.status = HTTP_OK
+
+        except:
+            self.contentType = FILE_TYPES['notfound']
+            self.status = HTTP_NOT_FOUND
+
+    def do_GET(self):
+        """Handle HTTP GET request"""
+        self.find(self.path[1:]) # remove first '/'
+        self.respond()
+
+    def respond(self):
+        """Respond to the HTTP request"""
+        resp = self.handle_http()
+        self.wfile.write(resp)
+
+    def handle_http(self):
+        """Handle http encoding and formatting"""
+        self.send_response(self.status)
+        if self.status is HTTP_OK:
+            self.send_header('Content-type', self.contentType)
+            self.end_headers()
+            return bytes(self.contents)
+
+        return bytes("404 Not Found", 'UTF-8')
+
+
+if __name__ == '__main__':
+    httpd = server.HTTPServer((HOST_NAME, PORT_NUMBER), Server)
+    httpd.socket = ssl.wrap_socket(httpd.socket,
+                                   certfile="../resources/certificates/fullchain.pem",
+                                   keyfile='../resources/certificates/privkey.pem',
+                                   server_side=True)
+    if not os.path.exists(PI_PATH):
+        os.makedirs(PI_PATH)
+    print(time.asctime(), f"Server Starts - {HOST_NAME}:{PORT_NUMBER}")
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    httpd.server_close()
+    print(time.asctime(), f"Server Stops - {HOST_NAME}:{PORT_NUMBER}")

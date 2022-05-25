@@ -1,0 +1,16 @@
+#!/bin/bash
+
+cd src/
+while true; do
+	if ! pidof -x "webserver" > /dev/null; then
+		./webserver &
+		echo "New JPO webserver instance launched"
+	fi
+	
+	if ! pidof -x "jpo" > /dev/null; then
+		./jpo &
+		echo "New JPO demo app instance launched"
+	fi
+
+	sleep 5
+done

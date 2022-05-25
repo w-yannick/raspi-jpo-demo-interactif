@@ -1,0 +1,12 @@
+.DS_Store
+**/.idea/
+
+**/__pycache__/
+
+WXPython/wx.py
+
+public/
+
+local_variables
+
+build/

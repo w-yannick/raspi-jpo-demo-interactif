@@ -1,0 +1,166 @@
+#!/usr/bin/python3
+import os
+import PySimpleGUIQt as sg
+import numpy as np
+import cv2
+import time
+import math
+from Controller import Controller
+from HardwareConstants import ButtonConstants
+from imageProcessor import ImageProcessor
+from utils import generate_random_string, generate_QR, PI_PATH
+
+MODE_PHOTO = 0
+MODE_VIDEO = 1
+
+FILTER_KEYS_1 = list(ImageProcessor.FILTER_1)
+FILTER_KEYS_2 = list(ImageProcessor.FILTER_2)
+
+def startUI():
+    """UI loop
+
+    Main loop that updates visual components of the interface and polls hardware events.
+    """
+    sg.ChangeLookAndFeel('Dark')
+    f1_i, f2_i = 0, 0
+    countdown, counter, countdown_t_start = False, 0, 0
+    filename, qrcode, souvenir_image, show_qr_code = None, None, None, False
+    mode = MODE_VIDEO
+    controller = Controller()
+    img_proc = ImageProcessor()
+
+    # define the window layout
+    layout_logo = sg.Column([[sg.Image(filename='../resources/logos/flag_polymtl.png', key='logo_poly')]])
+    layout = [[sg.Frame('Image Originale', [[sg.Text(" ", font=('Helvetica', 14))],
+                                            [ sg.Image(filename='', key='original', pad=((0, 0), (50, 50)))]], font='Helvetica 18'), sg.Stretch(),
+               sg.Frame('Filtre 1', [[sg.Stretch(), sg.Text(img_proc.FILTER_1[FILTER_KEYS_1[f1_i]], font=('Helvetica', 14), key="name_filter1"), sg.Stretch()],
+                                     [sg.Image(filename='', key='filter1', pad=((0, 0), (50, 50)))],
+                                     [sg.Stretch(), sg.Slider(range=(1, 100), default_value=5, key='slider_filter_1', size=(60, 15),
+                                                 orientation='horizontal', font=('Helvetica', 16), disabled=True), sg.Stretch()]], font='Helvetica 18'),
+               sg.Frame('Filtre 2', [[sg.Stretch(), sg.Text(img_proc.FILTER_2[FILTER_KEYS_2[f2_i]], font=('Helvetica', 14), key="name_filter2"), sg.Stretch()],
+                                     [sg.Image(filename='', key='filter2', pad=((0, 0), (50, 50)))],
+                                     [sg.Stretch(), sg.Slider(range=(1, 100), default_value=10, key='slider_filter_2', size=(60, 15),
+                                                orientation='horizontal', font=('Helvetica', 16), disabled=True), sg.Stretch()]], font='Helvetica 18')],
+              [layout_logo, sg.Stretch(), sg.Text("FPS : ", font=('Helvetica', 30)), sg.Text("FPS : ", font=('Helvetica', 30), key="fps_count"), sg.Stretch(), sg.ReadButton('Exit', size=(10, 1), font='Helvetica 14')
+               ]]
+
+    # create the window and show it without the plot
+    window = sg.Window('Demo Application - OpenCV Integration')
+    window.Layout(layout).Finalize().maximize()
+
+    # ---===--- Event LOOP Read and display frames, operate the GUI --- #
+    while True:
+        start = time.time()
+        button, values = window.Read(timeout=0)
+
+        if button is 'Exit' or values is None:
+            break
+
+        if show_qr_code:
+            buffer = cv2.imencode(".bmp", qrcode)[1].tobytes()
+            window['original'].Update(data=buffer)
+
+            window['filter1'].Update(data=buffer1)
+
+            buffer2 = cv2.imencode(".bmp", souvenir_image)[1].tobytes()
+            window['filter2'].Update(data=buffer2)
+
+
+            event = controller.read_event()
+            if event:
+                if event == ButtonConstants.BTN_8_PRESSED:
+                    show_qr_code = False
+            continue
+
+        if mode == MODE_VIDEO:
+            ret, original_frame = img_proc.read()
+            original_frame = cv2.resize(original_frame, None, fx=0.9, fy=0.9)
+
+        if countdown:
+            if (time.time() - countdown_t_start) >= 1:
+                counter -= 1
+                countdown_t_start = time.time()
+            if counter >= 0:
+                original_frame = img_proc.countdown(original_frame, counter)
+            else:
+                countdown = False
+                mode = MODE_PHOTO
+                ret, original_frame = img_proc.read()
+                original_frame = cv2.resize(original_frame, None, fx=0.9, fy=0.9)
+
+        buffer = cv2.imencode(".bmp", original_frame)[1].tobytes()
+        window['original'].Update(data=buffer)
+
+        filtered_frame_1 = img_proc.applyFilter(original_frame, FILTER_KEYS_1[f1_i], values['slider_filter_1'])
+        buffer1 = cv2.imencode(".bmp", filtered_frame_1)[1].tobytes()
+        window['filter1'].Update(data=buffer1)
+
+        filtered_frame_2 = img_proc.applyFilter(filtered_frame_1, FILTER_KEYS_2[f2_i], values['slider_filter_2'])
+        buffer2 = cv2.imencode(".bmp", filtered_frame_2)[1].tobytes()
+        window['filter2'].Update(data=buffer2)
+
+        event = controller.read_event()
+        if event:
+            # filter 1 controls
+            if FILTER_KEYS_1[f1_i] != 'none':
+                if event == ButtonConstants.BTN_0_PRESSED:
+                    window['slider_filter_1'].Update(values['slider_filter_1'] + 5)
+                if event == ButtonConstants.BTN_1_PRESSED:
+                    window['slider_filter_1'].Update(values['slider_filter_1'] - 5)
+            if event == ButtonConstants.BTN_2_PRESSED:
+                f1_i += 1
+                if f1_i >= len(FILTER_KEYS_1):
+                    f1_i = 0
+                window['name_filter1'].Update(img_proc.FILTER_1[FILTER_KEYS_1[f1_i]])
+                if FILTER_KEYS_1[f1_i] != 'none':
+                    window['slider_filter_1'].Update(disabled=False)
+                else:
+                    window['slider_filter_2'].Update(disabled=True)
+            # filter 2 controls
+            if FILTER_KEYS_2[f2_i] != 'none':
+                if event == ButtonConstants.BTN_3_PRESSED:
+                    window['slider_filter_2'].Update(values['slider_filter_2'] + 5)
+                if event == ButtonConstants.BTN_4_PRESSED:
+                    window['slider_filter_2'].Update(values['slider_filter_2'] - 5)
+            if event == ButtonConstants.BTN_5_PRESSED:
+                f2_i += 1
+                if f2_i >= len(FILTER_KEYS_2):
+                    f2_i = 0
+                window['name_filter2'].Update(img_proc.FILTER_2[FILTER_KEYS_2[f2_i]])
+                if FILTER_KEYS_2[f2_i] != 'none':
+                    window['slider_filter_2'].Update(disabled=False)
+                else:
+                    window['slider_filter_2'].Update(disabled=True)
+
+            # Passer en MODE_COUNTDOWN
+            if event == ButtonConstants.BTN_6_PRESSED:
+                mode = MODE_VIDEO
+                counter, countdown_t_start = 3, time.time()
+                countdown = True
+
+            # Passer en MODE_VIDEO
+            if event == ButtonConstants.BTN_7_PRESSED:
+                mode = MODE_VIDEO
+
+            # Sauvegarder l'image et generer un QR Code
+            if event == ButtonConstants.BTN_8_PRESSED:
+                for f in os.listdir(PI_PATH):
+                    file_path = os.path.join(PI_PATH, f)
+                    try:
+                        if os.path.isfile(file_path):
+                            os.remove(file_path)
+                    except Exception as e:
+                        print(e)
+                filename = generate_random_string(40)
+                souvenir_image = img_proc.addPolyLogo(filtered_frame_2)
+                img_proc.saveImage(souvenir_image, name=filename, folder=PI_PATH)
+                qrcode = np.array(generate_QR(filename)).astype(np.uint8)
+                buffer1 = buffer2
+                show_qr_code = True
+
+        stop = time.time()
+        window['fps_count'].Update(math.ceil(1/(stop-start)))
+
+
+if __name__ == '__main__':
+    startUI()
